@@ -1,0 +1,85 @@
+/* App.css */
+
+/* Container for the entire application */
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Toolbar styles */
+.MuiToolbar-root {
+  background-color: var(--paper-background);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Job List styles */
+.job-list-container {
+  flex: 1;
+  padding: 16px;
+}
+
+/* Card styles */
+.MuiCard-root {
+  background-color: var(--card-background);
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.MuiCard-root:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Modal styles */
+.MuiDialog-paper {
+  background-color: var(--paper-background);
+  color: var(--text-primary);
+}
+
+/* Pagination styles */
+.MuiPagination-ul {
+  justify-content: center;
+}
+
+.MuiPaginationItem-root {
+  color: var(--primary-color);
+}
+
+.MuiPaginationItem-root.Mui-selected {
+  background-color: var(--primary-color) !important;
+  color: #ffffff !important;
+}
+
+/* Search bar styles */
+.search-bar {
+  width: 300px;
+}
+
+/* Button styles */
+.MuiButton-root {
+  color: var(--text-primary);
+}
+
+/* Ensure icons inherit text color */
+.MuiSvgIcon-root {
+  color: var(--text-primary);
+}
+
+/* Tooltip styles */
+.MuiTooltip-tooltip {
+  background-color: var(--paper-background);
+  color: var(--text-primary);
+  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Snackbar styles */
+.MuiSnackbar-root {
+  /* Optional: Customize Snackbar position or styles further if needed */
+}
+
+/* Button focus state */
+.MuiButton-root:focus {
+  outline: 2px solid var(--secondary-color);
+  outline-offset: 2px;
+}
