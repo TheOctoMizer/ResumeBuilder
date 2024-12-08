@@ -275,6 +275,17 @@ function JobList({ toggleTheme, themeMode }) {
             onChange={handleSearch}
             sx={{ width: "300px" }}
           />
+          <Tooltip title="Analytics">
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={() => {
+                console.log("Analytics clicked");
+              }}
+            >
+              Analytics
+            </Button>
+          </Tooltip>
           <Tooltip title="Refresh">
             <IconButton aria-label="refresh" onClick={handleRefresh}>
               <RefreshIcon />
