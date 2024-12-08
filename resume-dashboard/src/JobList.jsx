@@ -124,8 +124,8 @@ function JobList({ toggleTheme, themeMode }) {
         // Placeholder for generate action
         // After successful generation, update job list or notify user
         // For example:
-        // await axios.post(`${API_BASE_URL}/api/jobs/${job._id}/generate`);
-        // fetchJobs();
+        await axios.post(`${API_BASE_URL}/api/generate?jobId=${job._id}`);
+        fetchJobs();
         setSnackbar({
           open: true,
           message: `Generated resume for job ID: ${job._id}`,

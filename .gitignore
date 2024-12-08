@@ -24,3 +24,8 @@
 
 
 **/resumeData.js
+
+**/.env
+**/*.pdf
+**/*.docx
+**/*.doc
