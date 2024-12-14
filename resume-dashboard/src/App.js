@@ -3,7 +3,10 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline"; // Import CssBaseline
-import JobList from "./JobList";
+// import JobList from "./JobList";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Home from "./pages/Home";
+import Dashboard from "./pages/Dashboard";
 
 function App() {
   // State to hold the current theme mode ('light' or 'dark')
@@ -114,8 +117,21 @@ function App() {
 
   return (
     <ThemeProvider theme={theme}>
-      <CssBaseline /> {/* Apply CssBaseline for consistent styling */}
-      <JobList toggleTheme={toggleTheme} themeMode={themeMode} />
+      <CssBaseline />
+      <Router>
+        <Routes>
+          <Route
+            path="/"
+            element={<Home toggleTheme={toggleTheme} themeMode={themeMode} />}
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <Dashboard toggleTheme={toggleTheme} themeMode={themeMode} />
+            }
+          />
+        </Routes>
+      </Router>
     </ThemeProvider>
   );
 }
