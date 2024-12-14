@@ -29,3 +29,5 @@
 **/*.pdf
 **/*.docx
 **/*.doc
+
+**/__pycache__
