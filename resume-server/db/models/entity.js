@@ -14,7 +14,7 @@ const entitySchema = new mongoose.Schema(
         SKILL: { type: [String] },
         DESCRIPTION: { type: String },
         WORK_ARRANGEMENT: { type: String, enum: ["Full-time", "Part-time", "Internship", "Contract", "None"] },
-            WORK_LOCATION: { type: String, enum: ["Remote", "Onsite", "Hybrid", "None"] },
+        WORK_LOCATION: { type: String, enum: ["Remote", "Onsite", "Hybrid", "None"] },
         isGenerate: { type: Boolean, default: false },
         resumePath: { type: String, default: null },
         processedAt: { type: Date, default: Date.now },
