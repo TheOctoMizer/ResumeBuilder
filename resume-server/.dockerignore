@@ -1,0 +1,13 @@
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.vscode
+**/.git
+**/.idea
+**/.DS_Store
+**/*.log
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.pyz
+**/*.pyw
