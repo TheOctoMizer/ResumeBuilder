@@ -117,16 +117,7 @@ function identifyJobBlocks() {
  * @returns {boolean} - True if it's a job posting, else false.
  */
 function isJobPosting(element) {
-  // Implement logic based on common job posting attributes
-  // Example: Check for keywords, specific class names, presence of job-specific fields, etc.
-  const keywords = [
-    "job",
-    "career",
-    "position",
-    "employment",
-    "vacancy",
-    "opportunity",
-  ];
+  const keywords = ["job", "career", "position", "employment", "vacancy"];
   const text = element.innerText.toLowerCase();
   return keywords.some((keyword) => text.includes(keyword));
 }
@@ -149,15 +140,18 @@ function extractData() {
     .map((selector) => {
       const el = document.querySelector(selector);
       if (el) {
-        return el.innerText.trim(); // Use innerHTML if you prefer to keep HTML structure
+        return {
+          content: el.innerText.trim(),
+          url: window.location.href,
+          job_find: document.title,
+          job_id: `job-${Date.now()}`,
+        };
       }
       return null;
     })
     .filter((item) => item !== null);
 
-  const concatenatedContent = contents.join("\n\n"); // Separate entries by double newline
-
-  return { content: concatenatedContent };
+  return contents.length > 0 ? contents[0] : null;
 }
 
 /**
@@ -196,27 +190,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     identifyJobBlocks();
     // Start observing DOM changes
     if (!observer) {
-      observer = new MutationObserver((mutations) => {
-        mutations.forEach(() => {
-          identifyJobBlocks();
-        });
-      });
+      observer = new MutationObserver(() => identifyJobBlocks());
       observer.observe(document.body, { childList: true, subtree: true });
     }
     sendResponse({ success: true });
   } else if (request.action === "deactivate") {
     clearOverlays();
-    // Disconnect Mutation Observer
-    if (observer) {
-      observer.disconnect();
-      observer = null;
-    }
+    if (observer) observer.disconnect();
+    observer = null;
     sendResponse({ success: true });
   } else if (request.action === "extract") {
     const data = extractData();
-    sendResponse({ success: true, data });
+    sendResponse({ success: !!data, data });
   }
-  return true; // Indicates that the response is sent asynchronously
+  return true;
 });
 
 console.log("Content script loaded");
