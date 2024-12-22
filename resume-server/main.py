@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 import logging
 from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 from openai import OpenAI
 from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
@@ -181,13 +181,13 @@ class JobDataEntities(BaseModel):
     JobID: str = Field(..., description="The unique identifier assigned to the job by the job posting platform or company, if available.")
     Company: str = Field(..., description="The official name of the organization offering the job.")
     JobTitle: str = Field(..., description="The title or designation of the job role being offered, such as 'Software Engineer' or 'Marketing Specialist'.")
-    # Salary: Optional[SalaryType] = Field(None, description="The range or exact salary offered for the position, if mentioned in the job posting. May include a minimum and maximum amount or a fixed amount.")
     Salary: str = Field(default="Not Specified", description="The range or exact salary offered for the position, if mentioned in the job posting. May include a minimum and maximum amount or a fixed amount.")
     City: str = Field(description="The geographic location where the job is based, such as a city", default="Not Specified")
     State: str = Field(description="The geographic location where the job is based, such as a state", default="Not Specified")
     Country: str = Field(description="The geographic location where the job is based, such as a country", default="Not Specified")
     Experience: List[str] = Field(..., description="The minimum level of professional experience required for the job, typically measured in years or types of relevant experience.")
     TechnicalSkills: List[str] = Field(..., description="A list of technical, professional, or interpersonal skills required to qualify for the role, such as 'Python', 'Team Leadership', or 'Project Management'.")
+    JobSummary: Optional[str] = Field(..., description="A brief summary of the job application, for quick references.")
     WorkArrangement: WorkArrangementType = Field(..., description="The type of employment arrangement offered, such as full-time, part-time, internship, or contract.")
     WorkLocation: WorkLocationType = Field(..., description="The work environment, specifying whether the job requires onsite presence, is fully remote, or offers a hybrid arrangement.")
     CompanyDetails: Optional[str] = Field(None, description="Additional information about the company, such as its mission, values, culture, or industry details.")
@@ -263,6 +263,10 @@ json_schema = {
             "items": {"type": "string"},
         "description": "A list of soft skills or interpersonal skills required to excel in the role, such as 'Communication', 'Problem-Solving', or 'Leadership'."
     },
+    "JobSummary": {
+        "type": "string",
+        "description": "A brief summary of the job application, for quick references."
+    },
     "WorkArrangement": {
       "type": "string",
       "enum": ["Full-time", "Part-time", "Internship", "Contract", "Not Specified"],
@@ -286,6 +290,7 @@ json_schema = {
     "TechnicalSkills",
     "WorkArrangement",
     "WorkLocation",
+    "JobSummary"
   ]
 }
 
@@ -488,3 +493,108 @@ async def get_available_models():
     except Exception as e:
         logging.error(f"Error fetching models: {e}")
     return {"models": available_models}
+
+@app.get("/api/applicationStages")
+async def get_application_stages():
+    try:
+        pipeline = [
+            {
+                "$group": {
+                    "_id": None,
+                    "Applied": {"$sum": {"$cond": ["$IsApplied", 1, 0]}},
+                    "Shortlisted": {"$sum": {"$cond": ["$IsShortlisted", 1, 0]}},
+                    "Interviewed": {"$sum": {"$cond": ["$IsInterviewed", 1, 0]}},
+                    "Offered": {"$sum": {"$cond": ["$IsOffered", 1, 0]}},
+                    "Accepted": {"$sum": {"$cond": ["$IsAccepted", 1, 0]}},
+                    "Rejected": {"$sum": {"$cond": ["$IsRejected", 1, 0]}}
+                }
+            }
+        ]
+        result = await job_tracking_table.aggregate(pipeline).to_list(length=1)
+        return result[0] if result else {}
+    except Exception as e:
+        logging.error(f"Error fetching application stages: {e}")
+        return {"error": "Error fetching application stages"}
+    
+@app.get("/api/responseRates")
+async def get_response_rates():
+    try:
+        total_applied = await job_tracking_table.count_documents({"IsApplied": True})
+        total_shortlisted = await job_tracking_table.count_documents({"IsShortlisted": True})
+        total_interviewed = await job_tracking_table.count_documents({"IsInterviewed": True})
+        total_offered = await job_tracking_table.count_documents({"IsOffered": True})
+        total_accepted = await job_tracking_table.count_documents({"IsAccepted": True})
+        total_rejected = await job_tracking_table.count_documents({"IsRejected": True})
+
+        return {
+            "Applied": total_applied,
+            "Shortlisted": total_shortlisted,
+            "Interviewed": total_interviewed,
+            "Offered": total_offered,
+            "Accepted": total_accepted,
+            "Rejected": total_rejected,
+            "ResponseRates": {
+                "ShortlistedRate": total_shortlisted / total_applied * 100 if total_applied else 0,
+                "InterviewedRate": total_interviewed / total_applied * 100 if total_applied else 0,
+                "OfferedRate": total_offered / total_applied * 100 if total_applied else 0,
+                "AcceptedRate": total_accepted / total_applied * 100 if total_applied else 0,
+                "RejectedRate": total_rejected / total_applied * 100 if total_applied else 0,
+            }
+        }
+    except Exception as e:
+        logging.error(f"Error fetching response rates: {e}")
+        return {"error": "Error fetching response rates"}
+
+@app.get("/api/jobSourceEffectiveness")
+async def get_job_source_effectiveness():
+    try:
+        pipeline = [
+            {
+                "$group": {
+                    "_id": "$JobFind",
+                    "total_applications": {"$sum": 1},
+                    "shortlisted": {"$sum": {"$cond": ["$IsShortlisted", 1, 0]}},
+                    "interviewed": {"$sum": {"$cond": ["$IsInterviewed", 1, 0]}},
+                    "offered": {"$sum": {"$cond": ["$IsOffered", 1, 0]}},
+                    "accepted": {"$sum": {"$cond": ["$IsAccepted", 1, 0]}},
+                    "rejected": {"$sum": {"$cond": ["$IsRejected", 1, 0]}}
+                }
+            }
+        ]
+        results = await job_tracking_table.aggregate(pipeline).to_list(length=None)
+        return results
+    except Exception as e:
+        logging.error(f"Error fetching job source effectiveness: {e}")
+        return {"error": "Error fetching job source effectiveness"}
+
+@app.get("/api/timeToResponse")
+async def get_time_to_response():
+    try:
+        pipeline = [
+            {
+                "$match": {
+                    "IsShortlisted": True,
+                    "AppliedDate": {"$ne": None},
+                    "ShortlistedDate": {"$ne": None}
+                }
+            },
+            {
+                "$project": {
+                    "time_to_shortlist": {
+                        "$subtract": ["$ShortlistedDate", "$AppliedDate"]
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": None,
+                    "average_time_to_shortlist": {"$avg": "$time_to_shortlist"}
+                }
+            }
+        ]
+        result = await job_tracking_table.aggregate(pipeline).to_list(length=1)
+        average_time = result[0]["average_time_to_shortlist"] if result else 0
+        return {"average_time_to_shortlist_days": average_time / 1000 / 60 / 60 / 24}
+    except Exception as e:
+        logging.error(f"Error fetching time to response: {e}")
+        return {"error": "Error fetching time to response"}
