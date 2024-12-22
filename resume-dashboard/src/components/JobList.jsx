@@ -66,7 +66,7 @@ function JobList({ toggleTheme, themeMode }) {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/allJobs`, {
+      const response = await axios.get(`${API_BASE_URL}/api/jobs`, {
         params: {
           page: currentPage,
           limit: limit,

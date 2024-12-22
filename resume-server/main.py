@@ -103,7 +103,7 @@ class AllJobsRequest(BaseModel):
 
 
 # API to fetch all jobs using POST
-@app.get("/api/allJobs")
+@app.get("/api/jobs")
 async def get_all_jobs(
     page: int = Query(1, ge=1, description="Page number"),
     search: Optional[str] = Query(None, description="Search query"),
@@ -265,7 +265,7 @@ json_schema = {
     },
     "JobSummary": {
         "type": "string",
-        "description": "A brief summary of the job application, for quick references."
+        "description": "A concise summary of the job posting, capturing the role, responsibilities, and key qualifications."
     },
     "WorkArrangement": {
       "type": "string",
@@ -356,10 +356,11 @@ async def process_job_and_extract_details(job_content: str, job_url: str, job_fi
         JobDataEntities: The extracted entities from the job description
     """
     system_instruction = (
-        "Extract all the available job details.\n"
-        "Keep the extractions relevant to the job description and brief.\n"
-        "Keep the details between 5 to 10 words."
-    )
+    "Extract all the available job details.\n"
+    "Provide a clear and concise summary of the job posting that describes the role, responsibilities, and key qualifications.\n"
+    "Keep the summary between 30 to 60 words to ensure it is informative yet concise."
+)
+
 
     try:
         openai_response = openai_client.beta.chat.completions.parse(
@@ -487,7 +488,7 @@ async def add_job(job: AddJobRequest) -> dict:
 async def get_available_models():
     available_models = []
     try:
-        models = await openai_client.models.list()
+        models = openai_client.models.list()
         for model in models.data:
             available_models.append(model.id)
     except Exception as e:
@@ -598,3 +599,115 @@ async def get_time_to_response():
     except Exception as e:
         logging.error(f"Error fetching time to response: {e}")
         return {"error": "Error fetching time to response"}
+    
+    
+
+@app.get("/api/jobs/stats")
+async def get_job_stats():
+    """
+    Retrieve aggregated statistics for the job tracking dashboard.
+    
+    Returns:
+        dict: A dictionary containing various analytics data.
+    """
+    try:
+        # Application Stage Distribution
+        application_stage_pipeline = [
+            {
+                "$group": {
+                    "_id": None,
+                    "Applied": {"$sum": {"$cond": ["$IsApplied", 1, 0]}},
+                    "Shortlisted": {"$sum": {"$cond": ["$IsShortlisted", 1, 0]}},
+                    "Interviewed": {"$sum": {"$cond": ["$IsInterviewed", 1, 0]}},
+                    "Offered": {"$sum": {"$cond": ["$IsOffered", 1, 0]}},
+                    "Accepted": {"$sum": {"$cond": ["$IsAccepted", 1, 0]}},
+                    "Rejected": {"$sum": {"$cond": ["$IsRejected", 1, 0]}}
+                }
+            }
+        ]
+        application_stage_result = await job_tracking_table.aggregate(application_stage_pipeline).to_list(length=1)
+        application_stage = application_stage_result[0] if application_stage_result else {}
+        
+        # Salary Distribution
+        salary_distribution_pipeline = [
+            {
+                "$match": {
+                    "Salary": {"$ne": "Not Specified"}
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$Salary",
+                    "count": {"$sum": 1}
+                }
+            },
+            {
+                "$sort": {"_id": 1}
+            }
+        ]
+        salary_distribution = await job_tracking_table.aggregate(salary_distribution_pipeline).to_list(length=None)
+        
+        # Location Distribution
+        location_distribution_pipeline = [
+            {
+                "$group": {
+                    "_id": "$Country",  # You can change this to "State" or "City" if preferred
+                    "count": {"$sum": 1}
+                }
+            },
+            {
+                "$sort": {"count": -1}
+            }
+        ]
+        location_distribution = await job_tracking_table.aggregate(location_distribution_pipeline).to_list(length=None)
+        
+        # Top Skills
+        top_skills_pipeline = [
+            {"$unwind": "$TechnicalSkills"},
+            {
+                "$group": {
+                    "_id": "$TechnicalSkills",
+                    "count": {"$sum": 1}
+                }
+            },
+            {
+                "$sort": {"count": -1}
+            },
+            {
+                "$limit": 10  # Top 10 skills
+            }
+        ]
+        top_skills = await job_tracking_table.aggregate(top_skills_pipeline).to_list(length=None)
+        
+        # Job Source Effectiveness
+        job_source_pipeline = [
+            {
+                "$group": {
+                    "_id": "$JobFind",
+                    "total_applications": {"$sum": 1},
+                    "shortlisted": {"$sum": {"$cond": ["$IsShortlisted", 1, 0]}},
+                    "interviewed": {"$sum": {"$cond": ["$IsInterviewed", 1, 0]}},
+                    "offered": {"$sum": {"$cond": ["$IsOffered", 1, 0]}},
+                    "accepted": {"$sum": {"$cond": ["$IsAccepted", 1, 0]}},
+                    "rejected": {"$sum": {"$cond": ["$IsRejected", 1, 0]}}
+                }
+            },
+            {
+                "$sort": {"total_applications": -1}
+            }
+        ]
+        job_source_effectiveness = await job_tracking_table.aggregate(job_source_pipeline).to_list(length=None)
+        
+        # Compile all stats
+        stats = {
+            "applicationStageDistribution": application_stage,
+            "salaryDistribution": salary_distribution,
+            "locationDistribution": location_distribution,
+            "topSkills": top_skills,
+            "jobSourceEffectiveness": job_source_effectiveness
+        }
+        
+        return stats
+    except Exception as e:
+        logging.error(f"Error fetching job statistics: {e}")
+        return {"error": "Error fetching job statistics"}
