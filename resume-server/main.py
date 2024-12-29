@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 from openai import OpenAI
 from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
+from googlesearch import search
+import asyncio
 
 
 app = FastAPI()
@@ -219,6 +221,27 @@ class AddJobRequest(BaseModel):
     job_find: str = Field(..., description="Job platform or website where the job was found")
     job_id: str = Field(..., description="Unique identifier of the job")
 
+
+class SearchRequest(BaseModel):
+    query: str = Field(..., description="Search query")
+    lang: str = Field("en", description="Language code for the search query")
+    num: int = Field(10, ge=1, le=100, description="Number of search results to fetch")
+    stop: int = Field(10, ge=1, le=100, description="Number of search results to stop at")
+
+search_request_schema = {
+    "type": "object",
+    "title": "SearchRequest",
+    "properties": {
+        "query": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 3,
+            "description": "Search query"
+        },
+        "lang": {"type": "string", "description": "Language code to make the google search"}
+    },
+    "required": ["query", "lang"]
+}
 
 json_schema = {
   "type": "object",
@@ -444,6 +467,46 @@ async def extract_job_url(url):
         cleaned_url = urlunparse(parsed_url._replace(query=cleaned_query))
         return cleaned_url
 
+async def get_google_search_queries(data: str):
+    try:
+        search_queries = openai_client.beta.chat.completions.parse(
+            model="gemma-2-9b-it",
+            messages=[
+                {"role": "user", "content": data},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "schema": search_request_schema
+                }
+            }
+        )
+
+        intermediate_search_queries = search_queries.choices[0].message.content
+        if not intermediate_search_queries:
+            logging.error("No search queries extracted.")
+            return None, None
+
+        if isinstance(intermediate_search_queries, str):
+            logging.info("Search queries extracted as string.")
+            intermediate_search_queries = json.loads(intermediate_search_queries)
+            logging.info(f"Search queries loaded into JSON")
+        search_queries = intermediate_search_queries["query"]
+        lang = intermediate_search_queries["lang"]
+
+        return search_queries, lang
+    except Exception as e:
+        logging.error(f"Error generating search queries: {e}")
+        return None, None
+
+
+async def search_google(query: dict, lang: str = "en", num: int = 10, stop: int = 10):
+    # loop through the queries and search
+    search_results = []
+    for q in query:
+        search_results.append(search(q, num=num, lang=lang, stop=stop))
+    return search_results
+
 # API to add a new job
 @app.post("/api/addJob")
 async def add_job(job: AddJobRequest) -> dict:
@@ -477,8 +540,12 @@ async def add_job(job: AddJobRequest) -> dict:
         if not tracking_result.inserted_id:
             return {"error": "Error adding job to tracking table"}
 
-        return {"message": "Job added successfully", "job_id": str(tracking_result.inserted_id)}
-    
+        search_queries, lang = await get_google_search_queries(job.content)
+        if not search_queries:
+            return {"error": "Error generating search queries"}
+        
+        search_results = await search_google(search_queries, lang)
+        return {"message": "Job added successfully", "job_id": str(tracking_result.inserted_id), "search_results": search_results}
     except Exception as e:
         logging.error(f"Error adding job: {e}")
         return {"error": "Error adding job"}
