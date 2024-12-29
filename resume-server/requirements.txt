@@ -40,3 +40,4 @@ watchfiles==1.0.3
 websockets==14.1
 wheel==0.44.0
 motor
+google
