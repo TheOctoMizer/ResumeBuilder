@@ -12,6 +12,7 @@ from typing import Optional, List
 from openai import OpenAI
 from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
 from googlesearch import search
+from routes.get_available_models import router as get_available_models
 import asyncio
 
 
@@ -551,16 +552,7 @@ async def add_job(job: AddJobRequest) -> dict:
         return {"error": "Error adding job"}
 
 
-@app.get("/api/availableModels")
-async def get_available_models():
-    available_models = []
-    try:
-        models = openai_client.models.list()
-        for model in models.data:
-            available_models.append(model.id)
-    except Exception as e:
-        logging.error(f"Error fetching models: {e}")
-    return {"models": available_models}
+app.include_router(router=get_available_models, prefix='/api')
 
 @app.get("/api/applicationStages")
 async def get_application_stages():
