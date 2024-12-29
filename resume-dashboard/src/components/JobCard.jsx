@@ -29,32 +29,35 @@ function JobCard({ job, onGenerateDownload, onClick }) {
     >
       <CardContent sx={{ flexGrow: 1 }}>
         <Typography variant="h6" component="div">
-          {job.TITLE || "N/A"}
+          {job.JobTitle || "N/A"}
         </Typography>
-        <Typography color="text.secondary">{job.COMPANY || "N/A"}</Typography>
+        <Typography color="text.secondary">{job.Company || "N/A"}</Typography>
         <Typography variant="body2" mt={1}>
-          <strong>Salary:</strong> {job.SALARY || "N/A"}
+          <strong>Salary:</strong> {job.Salary || "N/A"}
         </Typography>
         <Typography variant="body2">
-          <strong>Location:</strong> {job.LOCATION || "N/A"}
+          <strong>Location:</strong>{" "}
+          {`${job.City}, ${job.State}, ${job.Country}` || "N/A"}
         </Typography>
         <Typography variant="body2" mt={1}>
           <strong>Skills:</strong>{" "}
-          {job.SKILL && job.SKILL.length > 0 ? job.SKILL.join(", ") : "N/A"}
+          {job.TechnicalSkills && job.TechnicalSkills.length > 0
+            ? job.TechnicalSkills.join(", ")
+            : "N/A"}
         </Typography>
       </CardContent>
       <CardActions>
-        <Tooltip title={job.resumePath ? "Download Resume" : "Generate Resume"}>
+        <Tooltip title={job.ResumePath ? "Download Resume" : "Generate Resume"}>
           <IconButton
             size="small"
             color="secondary"
-            aria-label={job.resumePath ? "Download Resume" : "Generate Resume"}
+            aria-label={job.ResumePath ? "Download Resume" : "Generate Resume"}
             onClick={(e) => {
               e.stopPropagation(); // Prevent triggering card click
               onGenerateDownload(job);
             }}
           >
-            {job.resumePath ? <DownloadIcon /> : <BuildIcon />}
+            {job.ResumePath ? <DownloadIcon /> : <BuildIcon />}
           </IconButton>
         </Tooltip>
       </CardActions>
