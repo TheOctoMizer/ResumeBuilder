@@ -11,9 +11,17 @@ from datetime import datetime
 from typing import Optional, List
 from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
 from googlesearch import search
+from starlette.responses import FileResponse
+
 from src.routes.get_available_models import router as get_available_models
+
 from src.utils.openai_client import get_openai_client
 from src.utils.convert_mongo_document import convert_mongo_document
+from src.models.get_all_job_request import AllJobsRequest
+from src.models.work_arrangement import WorkArrangementType
+from src.routes.get_all_jobs import router as get_all_jobs
+from src.utils.initialize import initialize_db
+from src.utils.session_management import get_job_tracking_table, get_manual_annotation_table, get_extracted_entities_table, initialize_session_data, get_db_client
 
 app = FastAPI()
 
@@ -40,44 +48,25 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     logging.info("Shutting down the server")
+    mongo_client = get_db_client()
     mongo_client.close()
 
 
 # Connect to MongoDB using Motor
-mongo_client = AsyncIOMotorClient("mongodb://localhost:27017/")
+initialize_session_data(
+    mongo_client=AsyncIOMotorClient("mongodb://localhost:27017/"),
+    db="jobsDB",
+    job_tracking_table="job_tracking",
+    manual_annotation_table="manual_annotation",
+    extracted_entities_table="extracted_entities"
+)
 db = None
 job_tracking_table = None
 manual_annotation_table = None
 extracted_entities_table = None
 
 
-async def initialize_db():
-    global db, job_tracking_table, manual_annotation_table, extracted_entities_table
-    try:
-        db = mongo_client["jobsDB"]
-        job_tracking_table = db["job_tracking"]
-        manual_annotation_table = db["manual_annotation"]
-        extracted_entities_table = db["extracted_entities"]
-        # check if the indexes are already created
-        indexes = await job_tracking_table.index_information()
-        if "job_search_index" not in indexes:
-            logging.info("Creating indexes for job_tracking table")
-            await job_tracking_table.create_index(
-                [
-                    ("Company", "text"),
-                    ("JobTitle", "text"),
-                    ("Location", "text"),
-                    ("TechnicalSkills", "text"),
-                    ("Experience", "text"),
-                ],
-                name="job_search_index",
-                default_language="english",
-            )
-            logging.info("Databases and collections initialized successfully.")
-        else:
-            logging.info("Databases and collections initialized successfully.")
-    except Exception as e:
-        logging.error(f"Error initializing database: {e}")
+
 
 
 _ = get_openai_client(
@@ -88,65 +77,8 @@ _ = get_openai_client(
 
 # Serve the React app
 @app.get("/", response_class=HTMLResponse)
-async def read_root() -> HTMLResponse:
+async def read_root() -> FileResponse:
     return FileResponse("client/build/index.html")
-
-
-
-class AllJobsRequest(BaseModel):
-    page: int = Field(default=1, ge=1, description="Page number")
-    search: str = Field(default="", description="Search query")
-    limit: int = Field(default=10, ge=1, le=100, description="Number of items per page")
-
-
-# API to fetch all jobs using POST
-@app.get("/api/jobs")
-async def get_all_jobs(
-    page: int = Query(1, ge=1, description="Page number"),
-    search: Optional[str] = Query(None, description="Search query"),
-    limit: int = Query(12, ge=1, le=100, description="Number of items per page"),
-):
-    """
-    Fetch all jobs with optional pagination and search.
-
-    Args:
-        page (int): Page number, defaults to 1.
-        search (str): Search query, defaults to None (no search filter applied).
-        limit (int): Number of items per page, defaults to 12.
-
-    Returns:
-        dict: Paginated list of jobs matching the query.
-    """
-    try:
-        query = {}
-        if search:
-            query["$text"] = {"$search": search}
-        skip = (page - 1) * limit
-        cursor = job_tracking_table.find(query).skip(skip).limit(limit)
-        jobs = await cursor.to_list(length=limit)
-        jobs = [await convert_mongo_document(job) for job in jobs]
-        total_jobs = await job_tracking_table.count_documents(query)
-        response = {
-            "jobs": jobs,
-            "pagination": {
-                "page": page,
-                "limit": limit,
-                "total": total_jobs,
-                "total_pages": (total_jobs + limit - 1) // limit,
-            },
-        }
-        return response
-    except Exception as e:
-        logging.error(f"Error fetching all jobs: {e}")
-        return {"error": "Error fetching all jobs"}
-
-
-class WorkArrangementType(str, Enum):
-    FullTime = "Full-time"
-    PartTime = "Part-time"
-    Internship = "Internship"
-    Contract = "Contract"
-    NotSpecified = "Not Specified"
 
 
 class WorkLocationType(str, Enum):
@@ -556,6 +488,7 @@ async def add_job(job: AddJobRequest) -> dict:
 
 
 app.include_router(router=get_available_models, prefix='/api')
+app.include_router(router=get_all_jobs, prefix='/api')
 
 @app.get("/api/applicationStages")
 async def get_application_stages():
