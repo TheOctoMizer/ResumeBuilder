@@ -2,7 +2,7 @@ from openai import OpenAI
 
 _cached_client = None
 
-async def get_openai_client(api_key: str, base_url: str):
+def get_openai_client(api_key: str = None, base_url: str = None):
     """
     Function returns a cached OpenAI client if exists, else creates a new client.
     Use in Entry point so client can be reused.

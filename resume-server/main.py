@@ -7,14 +7,12 @@ from fastapi.responses import FileResponse, HTMLResponse
 import logging
 from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, List
-from openai import OpenAI
 from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
 from googlesearch import search
-from routes.get_available_models import router as get_available_models
-import asyncio
-
+from src.routes.get_available_models import router as get_available_models
+from src.utils.openai_client import get_openai_client
 
 app = FastAPI()
 
@@ -82,10 +80,15 @@ async def initialize_db():
 
 
 # Initialize OpenAI API
-openai_client = OpenAI(
-    base_url="http://localhost:1234/v1",
-    api_key="lm-studio"
-)
+# openai_client = OpenAI(
+#     base_url="http://localhost:1234/v1",
+#     api_key="lm-studio"
+# )
+
+_ = get_openai_client(
+                base_url="http://localhost:1234/v1",
+                api_key="lm-studio"
+            )
 
 
 # Serve the React app
@@ -384,11 +387,15 @@ async def process_job_and_extract_details(job_content: str, job_url: str, job_fi
     "Provide a clear and concise summary of the job posting that describes the role, responsibilities, and key qualifications.\n"
     "Keep the summary between 30 to 60 words to ensure it is informative yet concise."
 )
-
+    openai_client = None
+    try:
+        openai_client = get_openai_client()
+    except Exception as e:
+        logging.error(f"Error connecting to OpenAI API in process_job_and_extract_details: {e}")
 
     try:
         openai_response = openai_client.beta.chat.completions.parse(
-            model="gemma-2-9b-it",
+            model="gemma-2-27b-it",
             messages=[
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": job_content},
@@ -469,6 +476,11 @@ async def extract_job_url(url):
         return cleaned_url
 
 async def get_google_search_queries(data: str):
+    openai_client = None
+    try:
+        openai_client = get_openai_client()
+    except Exception as e:
+        logging.error(f"Error connecting to OpenAI API in get_google_search_queries: {e}")
     try:
         search_queries = openai_client.beta.chat.completions.parse(
             model="gemma-2-9b-it",
