@@ -13,6 +13,7 @@ from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
 from googlesearch import search
 from src.routes.get_available_models import router as get_available_models
 from src.utils.openai_client import get_openai_client
+from src.utils.convert_mongo_document import convert_mongo_document
 
 app = FastAPI()
 
@@ -79,12 +80,6 @@ async def initialize_db():
         logging.error(f"Error initializing database: {e}")
 
 
-# Initialize OpenAI API
-# openai_client = OpenAI(
-#     base_url="http://localhost:1234/v1",
-#     api_key="lm-studio"
-# )
-
 _ = get_openai_client(
                 base_url="http://localhost:1234/v1",
                 api_key="lm-studio"
@@ -96,11 +91,7 @@ _ = get_openai_client(
 async def read_root() -> HTMLResponse:
     return FileResponse("client/build/index.html")
 
-async def convert_mongo_document(document):
-    if '_id' in document:
-        document['id'] = str(document['_id'])
-        del document['_id']
-    return document
+
 
 class AllJobsRequest(BaseModel):
     page: int = Field(default=1, ge=1, description="Page number")
