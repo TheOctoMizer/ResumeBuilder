@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
 from typing import Optional, List
-from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
 from starlette.responses import FileResponse
 
 from src.routes.get_available_models import router as get_available_models
@@ -22,9 +21,11 @@ from src.models.get_all_job_request import AllJobsRequest
 from src.models.work_arrangement import WorkArrangementType
 from src.routes.get_all_jobs import router as get_all_jobs
 from src.utils.initialize import initialize_db
-from src.utils.session_management import get_job_tracking_table, get_manual_annotation_table, get_extracted_entities_table, initialize_session_data, get_db_client
+from src.utils.session_management import get_job_tracking_table, get_manual_annotation_table, get_extracted_entities_table, initialize_session_data, get_db_client, get_db_name
 from src.utils.google_search import search_google
 from src.routes.get_time_to_respond import router as get_time_to_respond
+from src.models.work_location import WorkLocationType
+from src.utils.extract_job_details import extract_url_find_id
 
 app = FastAPI()
 
@@ -63,10 +64,10 @@ initialize_session_data(
     manual_annotation_table="manual_annotation",
     extracted_entities_table="extracted_entities"
 )
-db = None
-job_tracking_table = None
-manual_annotation_table = None
-extracted_entities_table = None
+# db = None
+# job_tracking_table = None
+# manual_annotation_table = None
+# extracted_entities_table = None
 
 
 
@@ -84,11 +85,7 @@ async def read_root() -> FileResponse:
     return FileResponse("client/build/index.html")
 
 
-class WorkLocationType(str, Enum):
-    Onsite = "Onsite"
-    Remote = "Remote"
-    Hybrid = "Hybrid"
-    NotSpecified = "Not Specified"
+
 
 
 class JobStatusType(str, Enum):
@@ -166,7 +163,7 @@ search_request_schema = {
             "type": "array",
             "items": {"type": "string"},
             "minItems": 3,
-            "description": "Search query"
+            "description": "Search terms to use for the google search to up skill for the job"
         },
         "lang": {"type": "string", "description": "Language code to make the google search"}
     },
@@ -260,6 +257,9 @@ async def add_job_to_manual_annotation_table(job_content: str):
         Inserted ID or None
     """
     try:
+        db = get_db_client()
+        manual_annotation_table = db[get_db_name()][get_manual_annotation_table()]
+
         job = {
             "content": job_content,
             "status": "pending",
@@ -285,6 +285,8 @@ async def add_extracted_entities_to_table(job_id: str, extracted_entities: dict)
         Inserted ID or None
     """
     try:
+        db = get_db_client()
+        extracted_entities_table = db[get_db_name()][get_extracted_entities_table()]
         extracted_entities["job_id"] = job_id
         extracted_entities["added_at"] = datetime.utcnow()
         result = await extracted_entities_table.insert_one(extracted_entities)
@@ -320,6 +322,7 @@ async def process_job_and_extract_details(job_content: str, job_url: str, job_fi
         logging.error(f"Error connecting to OpenAI API in process_job_and_extract_details: {e}")
 
     try:
+        logging.info("Extracting job details...")
         openai_response = openai_client.beta.chat.completions.parse(
             model="gemma-2-27b-it",
             messages=[
@@ -344,62 +347,13 @@ async def process_job_and_extract_details(job_content: str, job_url: str, job_fi
         # print(F"Job Details: {job_details}")
         # Validate and create a JobDataEntities instance
         job_entity = JobDataEntities(**job_details, JobURL=job_url, JobFind=job_find, JobID=job_id)
+        logging.info("Job details extracted successfully.")
         return job_entity
 
     except Exception as e:
         logging.error(f"Error processing job details: {e}")
         return None
 
-
-async def extract_job_id(url):
-  """Extracts the 'currentJobId' parameter from a given URL.
-
-  Args:
-    url: The URL to parse.
-
-  Returns:
-    The value of the 'currentJobId' parameter, or None if not found.
-  """
-  parsed_url = urlparse(url)
-  query_params = parse_qs(parsed_url.query)
-  job_id = query_params.get('currentJobId')
-  if job_id:
-    return job_id[0]  # Extract the first value from the list
-  else:
-    return None
-
-async def extract_website(url):
-  """Extracts the website from a given URL.
-
-  Args:
-    url: The URL to parse.
-
-  Returns:
-    The website part of the URL.
-  """
-
-  parsed_url = urlparse(url)
-  return parsed_url.netloc
-
-async def extract_job_url(url):
-    """Extracts the job URL from a given URL.
-    
-    Args:
-        url: The URL to parse.
-    
-    Returns:
-        The job URL part of the URL.
-    """
-    
-    parsed_url = urlparse(url)
-    query_params = parse_qs(parsed_url.query)
-    if 'currentJobId' not in query_params:
-        return url
-    if "currentJobId" in query_params:
-        job_id_param = {'currentJobId': query_params['currentJobId'][0]}
-        cleaned_query = urlencode(job_id_param)
-        cleaned_url = urlunparse(parsed_url._replace(query=cleaned_query))
-        return cleaned_url
 
 async def get_google_search_queries(data: str):
     openai_client = None
@@ -409,8 +363,9 @@ async def get_google_search_queries(data: str):
         logging.error(f"Error connecting to OpenAI API in get_google_search_queries: {e}")
     try:
         search_queries = openai_client.beta.chat.completions.parse(
-            model="gemma-2-9b-it",
+            model="gemma-2-27b-it",
             messages=[
+                {"role": "system", "content": "Generate search queries to upskill for the job."},
                 {"role": "user", "content": data},
             ],
             response_format={
@@ -446,12 +401,9 @@ async def get_google_search_queries(data: str):
 async def add_job(job: AddJobRequest) -> dict:
     # print(F"Job: {job}")
     try:
-        job_url = await extract_job_url(job.url)
-        job_find = await extract_website(job.url)
-        job_post_id = await extract_job_id(job.url)
-        # print(F"Job URL: {job_url}")
-        # print(F"Job ID: {job_post_id}")
-        # print(F"Job Find: {job_find}")
+        db = get_db_client()
+        job_tracking_table = db[get_db_name()][get_job_tracking_table()]
+        job_url, job_post_id, job_find = await extract_url_find_id(job)
         job_id = await add_job_to_manual_annotation_table(job.content)
         if not job_id:
             return {"error": "Error adding job to manual annotation table"}
@@ -492,6 +444,8 @@ app.include_router(router=get_time_to_respond, prefix='/api')
 @app.get("/api/applicationStages")
 async def get_application_stages():
     try:
+        db = get_db_client()
+        job_tracking_table = db[get_db_name()][get_job_tracking_table()]
         pipeline = [
             {
                 "$group": {
@@ -514,6 +468,8 @@ async def get_application_stages():
 @app.get("/api/responseRates")
 async def get_response_rates():
     try:
+        db = get_db_client()
+        job_tracking_table = db[get_db_name()][get_job_tracking_table()]
         total_applied = await job_tracking_table.count_documents({"IsApplied": True})
         total_shortlisted = await job_tracking_table.count_documents({"IsShortlisted": True})
         total_interviewed = await job_tracking_table.count_documents({"IsInterviewed": True})
@@ -543,6 +499,8 @@ async def get_response_rates():
 @app.get("/api/jobSourceEffectiveness")
 async def get_job_source_effectiveness():
     try:
+        db = get_db_client()
+        job_tracking_table = db[get_db_name()][get_job_tracking_table()]
         pipeline = [
             {
                 "$group": {
@@ -573,6 +531,9 @@ async def get_job_stats():
         dict: A dictionary containing various analytics data.
     """
     try:
+        db = get_db_client()
+        job_tracking_table = db[get_db_name()][get_job_tracking_table()]
+
         # Application Stage Distribution
         application_stage_pipeline = [
             {
