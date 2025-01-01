@@ -10,7 +10,6 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
 from typing import Optional, List
 from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
-from googlesearch import search
 from starlette.responses import FileResponse
 
 from src.routes.get_available_models import router as get_available_models
@@ -22,6 +21,7 @@ from src.models.work_arrangement import WorkArrangementType
 from src.routes.get_all_jobs import router as get_all_jobs
 from src.utils.initialize import initialize_db
 from src.utils.session_management import get_job_tracking_table, get_manual_annotation_table, get_extracted_entities_table, initialize_session_data, get_db_client
+from src.utils.google_search import search_google
 
 app = FastAPI()
 
@@ -436,12 +436,7 @@ async def get_google_search_queries(data: str):
         return None, None
 
 
-async def search_google(query: dict, lang: str = "en", num: int = 10, stop: int = 10):
-    # loop through the queries and search
-    search_results = []
-    for q in query:
-        search_results.append(search(q, num=num, lang=lang, stop=stop))
-    return search_results
+
 
 # API to add a new job
 @app.post("/api/addJob")
