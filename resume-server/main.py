@@ -1,3 +1,5 @@
+# main.py
+
 from enum import Enum
 import json
 from fastapi import FastAPI, Query
@@ -22,6 +24,7 @@ from src.routes.get_all_jobs import router as get_all_jobs
 from src.utils.initialize import initialize_db
 from src.utils.session_management import get_job_tracking_table, get_manual_annotation_table, get_extracted_entities_table, initialize_session_data, get_db_client
 from src.utils.google_search import search_google
+from src.routes.get_time_to_respond import router as get_time_to_respond
 
 app = FastAPI()
 
@@ -484,6 +487,7 @@ async def add_job(job: AddJobRequest) -> dict:
 
 app.include_router(router=get_available_models, prefix='/api')
 app.include_router(router=get_all_jobs, prefix='/api')
+app.include_router(router=get_time_to_respond, prefix='/api')
 
 @app.get("/api/applicationStages")
 async def get_application_stages():
@@ -557,38 +561,6 @@ async def get_job_source_effectiveness():
     except Exception as e:
         logging.error(f"Error fetching job source effectiveness: {e}")
         return {"error": "Error fetching job source effectiveness"}
-
-@app.get("/api/timeToResponse")
-async def get_time_to_response():
-    try:
-        pipeline = [
-            {
-                "$match": {
-                    "IsShortlisted": True,
-                    "AppliedDate": {"$ne": None},
-                    "ShortlistedDate": {"$ne": None}
-                }
-            },
-            {
-                "$project": {
-                    "time_to_shortlist": {
-                        "$subtract": ["$ShortlistedDate", "$AppliedDate"]
-                    }
-                }
-            },
-            {
-                "$group": {
-                    "_id": None,
-                    "average_time_to_shortlist": {"$avg": "$time_to_shortlist"}
-                }
-            }
-        ]
-        result = await job_tracking_table.aggregate(pipeline).to_list(length=1)
-        average_time = result[0]["average_time_to_shortlist"] if result else 0
-        return {"average_time_to_shortlist_days": average_time / 1000 / 60 / 60 / 24}
-    except Exception as e:
-        logging.error(f"Error fetching time to response: {e}")
-        return {"error": "Error fetching time to response"}
     
     
 
