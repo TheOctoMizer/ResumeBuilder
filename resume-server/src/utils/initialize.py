@@ -1,6 +1,7 @@
 from .session_management import get_session_data, get_db_client, get_db_name, get_job_tracking_table, get_extracted_entities_table, get_manual_annotation_table
 import logging
 from logging import getLogger
+from pymongo import IndexModel
 
 async def initialize_db():
     session = get_session_data()
@@ -27,5 +28,14 @@ async def initialize_db():
             logging.info("Databases and collections initialized successfully.")
         else:
             logging.info("Databases and collections initialized successfully.")
+
+        # Create compound indexes for frequently queried fields
+        await job_tracking_table.create_indexes([
+            IndexModel([("IsApplied", 1), ("IsShortlisted", 1)]),
+            IndexModel([("JobFind", 1)]),
+            IndexModel([("TechnicalSkills", 1)]),
+            IndexModel([("Salary", 1)]),
+            IndexModel([("Country", 1)])
+        ])
     except Exception as e:
         logging.error(f"Error initializing database: {e}")

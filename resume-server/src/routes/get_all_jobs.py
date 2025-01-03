@@ -4,7 +4,8 @@ from typing import Optional, Dict
 import logging
 from src.utils.session_management import get_job_tracking_table, get_db_client, get_db_name
 from src.utils.convert_mongo_document import convert_mongo_document
-from motor.motor_asyncio import AsyncIOMotorCollection
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase, AsyncIOMotorClient
+from pymongo.errors import ConnectionFailure
 
 router = APIRouter()
 
@@ -27,12 +28,19 @@ async def get_all_jobs(
     """
     try:
         # Get database and collection names
-        db_client = get_db_client()  # Ensure this returns a valid AsyncIOMotorDatabase instance
-        # print(f"typeof db_client: {type(db_client)}")
-        db = db_client[get_db_name()]  # Should return a string
-        # print(f"typeof db: {type(db)}")
-        job_tracking_table_name = get_job_tracking_table()  # Should return a string
-        # print(f"typeof job_tracking_table_name: {type(job_tracking_table_name)}")
+        db_client = get_db_client()
+        if not isinstance(db_client, AsyncIOMotorClient):
+            raise TypeError(f"Expected AsyncIOMotorClient, got {type(db_client)}")
+        
+        db_name = get_db_name()
+        if not isinstance(db_name, str):
+            raise TypeError(f"Expected a string for db name, got {type(db_name)}")
+        
+        db = db_client[db_name]
+        if not isinstance(db, AsyncIOMotorDatabase):
+            raise TypeError(f"Expected AsyncIOMotorDatabase, got {type(db)}")
+
+        job_tracking_table_name = get_job_tracking_table()
         if not isinstance(job_tracking_table_name, str):
             raise ValueError(f"Expected a string for collection name, got {type(job_tracking_table_name)}")
 
@@ -67,6 +75,9 @@ async def get_all_jobs(
         }
         return response
 
+    except ConnectionFailure as e:
+        logging.error(f"Database connection error: {e}")
+        return {"error": "Failed to connect to the database."}
     except Exception as e:
         logging.error(f"Error fetching all jobs: {e}")
         return {"error": f"Error fetching all jobs: {str(e)}"}

@@ -164,3 +164,37 @@ async def get_job_source_effectiveness():
     except Exception as e:
         logging.error(f"Error fetching job source effectiveness: {e}")
         return {"error": "Error fetching job source effectiveness"}
+
+
+@router.get("/responseRates")
+@handle_exceptions
+async def get_response_rates():
+    try:
+        db = get_db_client()
+        job_tracking_table = db[get_db_name()][get_job_tracking_table()]
+        total_applied = await job_tracking_table.count_documents({"IsApplied": True})
+        total_shortlisted = await job_tracking_table.count_documents({"IsShortlisted": True})
+        total_interviewed = await job_tracking_table.count_documents({"IsInterviewed": True})
+        total_offered = await job_tracking_table.count_documents({"IsOffered": True})
+        total_accepted = await job_tracking_table.count_documents({"IsAccepted": True})
+        total_rejected = await job_tracking_table.count_documents({"IsRejected": True})
+
+        return {
+            "Applied": total_applied,
+            "Shortlisted": total_shortlisted,
+            "Interviewed": total_interviewed,
+            "Offered": total_offered,
+            "Accepted": total_accepted,
+            "Rejected": total_rejected,
+            "ResponseRates": {
+                "ShortlistedRate": total_shortlisted / total_applied * 100 if total_applied else 0,
+                "InterviewedRate": total_interviewed / total_applied * 100 if total_applied else 0,
+                "OfferedRate": total_offered / total_applied * 100 if total_applied else 0,
+                "AcceptedRate": total_accepted / total_applied * 100 if total_applied else 0,
+                "RejectedRate": total_rejected / total_applied * 100 if total_applied else 0,
+            }
+        }
+    except Exception as e:
+        logging.error(f"Error fetching response rates: {e}")
+        return {"error": "Error fetching response rates"}
+

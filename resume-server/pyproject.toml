@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "resume-server"
+version = "0.1.0"
+description = "Resume builder server application"
+authors = ["Chyavan Shenoy"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "0.109.0"
+uvicorn = "^0.34.0"
+python-dotenv = "^1.0.1"
+openai = "^1.58.1"
+pymongo = ">=4.9,<4.10"
+motor = "^3.6.0"
+google = "^3.0.0"
+annotated-types = "^0.7.0"
+anyio = "^4.7.0"
+certifi = "^2024.12.14"
+click = "^8.1.8"
+distro = "^1.9.0"
+dnspython = "^2.7.0"
+fastapi-cli = "^0.0.7"
+pydantic = "^2.5.0"
+pydantic-settings = "^2.7.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
