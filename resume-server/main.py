@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from src.config.startup import configure_app, startup_handler, shutdown_handler
-from src.routes import job_operations, job_stats, get_available_models, get_all_jobs, get_time_to_respond
+from src.routes import job_operations, job_stats, get_available_models, get_all_jobs, get_time_to_respond, home as home_route
 from src.utils.session_management import initialize_session_data
 from src.utils.session_management import get_db_client, get_db_name, get_job_tracking_table
 from fastapi.responses import FileResponse, HTMLResponse
@@ -59,3 +59,4 @@ app.include_router(router=get_all_jobs.router, prefix='/api')
 app.include_router(router=get_time_to_respond.router, prefix='/api')
 app.include_router(router=job_stats.router, prefix='/api')
 app.include_router(router=job_operations.router, prefix='/api')
+app.include_router(router=home_route.router)
