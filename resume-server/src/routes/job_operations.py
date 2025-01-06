@@ -1,4 +1,5 @@
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Query, HTTPException, Response
+from fastapi.responses import JSONResponse
 from src.models.job_models import AddJobRequest, JobDataEntities
 from src.utils.error_handling import handle_exceptions
 from src.utils.session_management import get_db_client, get_db_name, get_job_tracking_table
@@ -8,11 +9,14 @@ from src.utils.openai_client import get_openai_client
 from src.utils.openai_helpers import process_job_and_extract_details, get_google_search_queries
 from src.utils.annotation_helpers import add_job_to_manual_annotation_table
 from src.utils.url_helpers import get_titles_for_urls
+from src.utils.convert_mongo_document import convert_mongo_document
+from bson.objectid import ObjectId
+from bson.errors import InvalidId
 import logging
-from typing import List
+from typing import List, Optional
 from pymongo import UpdateOne
 
-router = APIRouter()
+router = APIRouter(prefix="/api")
 
 @router.post("/addJob")
 @handle_exceptions
@@ -176,3 +180,78 @@ async def get_url_titles(job_id: str):
     except Exception as e:
         logging.error(f"Error getting URL titles: {e}")
         return {"error": f"Error getting URL titles: {str(e)}"}
+
+@router.get("/dashboard/{job_id}")
+async def get_job_dashboard_data(job_id: str):
+    logging.info(f"Received request for job_id: {job_id}")
+    try:
+        # Validate ObjectId format
+        try:
+            job_id_obj = ObjectId(job_id)
+        except InvalidId:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid job ID format"}
+            )
+
+        db_client = get_db_client()
+        db_name = get_db_name()
+        job_tracking_table = db_client[db_name][get_job_tracking_table()]
+
+        # Get the specific job details
+        job = await job_tracking_table.find_one({"job_id": job_id})
+        if not job:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Job not found"}
+            )
+
+        # Convert MongoDB document to a standard dictionary
+        job = await convert_mongo_document(job)
+
+        # Get related statistics and data
+        pipeline = [
+            {
+                "$match": {
+                    "Company": job["Company"]
+                }
+            },
+            {
+                "$group": {
+                    "_id": None,
+                    "total_applications": {"$sum": 1},
+                    "avg_salary": {"$avg": "$Salary"},
+                    "similar_roles": {
+                        "$addToSet": "$JobTitle"
+                    }
+                }
+            }
+        ]
+        
+        stats = await job_tracking_table.aggregate(pipeline).to_list(length=1)
+        company_stats = stats[0] if stats else {}
+
+        dashboard_data = {
+            "jobDetails": job,
+            "companyStats": {
+                "totalApplications": company_stats.get("total_applications", 0),
+                "averageSalary": company_stats.get("avg_salary", 0),
+                "similarRoles": company_stats.get("similar_roles", [])
+            },
+            "applicationTimeline": {
+                "applied": job.get("AppliedDate"),
+                "interviews": job.get("Interviews", []),
+                "status": job.get("Status", "Applied")
+            }
+        }
+
+        logging.info(f"Found job: {job}")
+
+        return JSONResponse(content=dashboard_data)
+
+    except Exception as e:
+        logging.error(f"Error in get_job_dashboard_data: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Server error: {str(e)}"}
+        )

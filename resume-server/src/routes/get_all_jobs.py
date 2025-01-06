@@ -6,6 +6,8 @@ from src.utils.session_management import get_job_tracking_table, get_db_client, 
 from src.utils.convert_mongo_document import convert_mongo_document
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase, AsyncIOMotorClient
 from pymongo.errors import ConnectionFailure
+from bson.objectid import ObjectId
+from fastapi import HTTPException
 
 router = APIRouter()
 
@@ -73,6 +75,7 @@ async def get_all_jobs(
                 "total_pages": (total_jobs + limit - 1) // limit,
             },
         }
+        print(response)
         return response
 
     except ConnectionFailure as e:
@@ -81,3 +84,34 @@ async def get_all_jobs(
     except Exception as e:
         logging.error(f"Error fetching all jobs: {e}")
         return {"error": f"Error fetching all jobs: {str(e)}"}
+
+@router.get("/jobs/{job_id}")
+async def get_job_by_id(job_id: str):
+    """
+    Fetch a specific job by its ID.
+
+    Args:
+        job_id (str): The unique identifier of the job.
+
+    Returns:
+        dict: Detailed job information or error message.
+    """
+    try:
+        db_client = get_db_client()
+        db_name = get_db_name()
+        job_tracking_table = db_client[db_name][get_job_tracking_table()]
+
+        # Find the job by its ID
+        job = await job_tracking_table.find_one({"_id": ObjectId(job_id)})
+        
+        if not job:
+            return {"error": "Job not found"}
+
+        # Convert MongoDB document to a standard dictionary
+        job = await convert_mongo_document(job)
+        
+        return job
+
+    except Exception as e:
+        logging.error(f"Error fetching job by ID: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
