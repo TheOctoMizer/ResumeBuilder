@@ -1,64 +1,30 @@
-/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Reset some default browser styles */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-/* Define CSS variables for light mode */
-body.light {
-  --background-color: #fff8e1; /* Pastel Beige */
-  --paper-background: #ffffff; /* White */
-  --text-primary: #2e2e2e; /* Dark Gray */
-  --primary-color: #6ec1e4; /* Pastel Teal */
-  --secondary-color: #ffccc9; /* Pastel Peach */
-  --card-background: #ffffff; /* White */
-}
-
-/* Define CSS variables for dark mode */
-body.dark {
-  --background-color: #2c2c2c; /* Deep Charcoal */
-  --paper-background: #3c3c3c; /* Slightly Lighter Charcoal */
-  --text-primary: #f5f5f5; /* Light Gray */
-  --primary-color: #50c8d3; /* Pastel Aqua */
-  --secondary-color: #ff7f50; /* Pastel Coral */
-  --card-background: #3c3c3c; /* Slightly Lighter Charcoal */
-}
-
-/* Apply background and text colors globally */
 body {
-  background-color: var(--background-color);
-  color: var(--text-primary);
-  font-family: "Roboto", sans-serif;
+  @apply transition-colors duration-300;
 }
 
-/* Ensure MUI components inherit the background color */
-.MuiPaper-root {
-  background-color: var(--paper-background) !important;
+/* Global dark mode styles */
+.dark {
+  background-color: #121212;
+  color: #E0E0E0;
 }
 
-/* Customize scrollbar for better aesthetics */
-body::-webkit-scrollbar {
-  width: 8px;
+.dark a {
+  color: #4CAF50;
 }
 
-body::-webkit-scrollbar-track {
-  background: var(--background-color);
+.dark button {
+  background-color: #2196F3;
+  color: white;
 }
 
-body::-webkit-scrollbar-thumb {
-  background-color: var(--primary-color);
-  border-radius: 4px;
-}
-
-/* Link styles */
-a {
-  color: var(--primary-color);
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
+.dark input, 
+.dark select, 
+.dark textarea {
+  background-color: #1E1E1E;
+  color: #E0E0E0;
+  border-color: #333333;
 }

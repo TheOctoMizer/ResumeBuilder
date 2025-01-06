@@ -1,138 +1,141 @@
 // App.js
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
-import CssBaseline from "@mui/material/CssBaseline"; // Import CssBaseline
-// import JobList from "./JobList";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import React, { useEffect, useState, useCallback } from "react";
+import { 
+  BrowserRouter as Router, 
+  Routes, 
+  Route, 
+  useLocation,
+} from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import AnalyticsPage from "./pages/AnalyticsPage";
+import "./App.css";
+import "./index.css";
+import Sidebar from "./components/Sidebar";
 
 function App() {
-  // State to hold the current theme mode ('light' or 'dark')
-  const [themeMode, setThemeMode] = useState("light");
-
-  // State to determine if the user has manually selected a theme
-  const [isManual, setIsManual] = useState(false);
-
-  // Function to detect system's preferred color scheme
-  const getSystemTheme = () => {
-    if (
-      window.matchMedia &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches
-    ) {
-      return "dark";
-    }
-    return "light";
-  };
-
-  // Initialize theme on component mount
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme) {
-      setThemeMode(savedTheme);
-      setIsManual(true);
-    } else {
-      setThemeMode(getSystemTheme());
-    }
-  }, []);
-
-  // Listen for changes in system's color scheme if user hasn't set a manual preference
-  useEffect(() => {
-    if (!isManual) {
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      const handleChange = (e) => {
-        setThemeMode(e.matches ? "dark" : "light");
-      };
-      mediaQuery.addEventListener("change", handleChange);
-      return () => mediaQuery.removeEventListener("change", handleChange);
-    }
-  }, [isManual]);
-
-  // Memoize the theme to prevent unnecessary recalculations
-  const theme = useMemo(
-    () =>
-      createTheme({
-        palette: {
-          mode: themeMode,
-          ...(themeMode === "light"
-            ? {
-                // Light mode palette
-                primary: {
-                  main: "#6EC1E4", // Pastel Teal
-                },
-                secondary: {
-                  main: "#FFCCC9", // Pastel Peach
-                },
-                background: {
-                  default: "#FFF8E1", // Pastel Beige
-                  paper: "#FFFFFF", // White
-                },
-                text: {
-                  primary: "#2E2E2E", // Dark Gray
-                },
-              }
-            : {
-                // Dark mode palette
-                primary: {
-                  main: "#50C8D3", // Pastel Aqua
-                },
-                secondary: {
-                  main: "#FF7F50", // Pastel Coral
-                },
-                background: {
-                  default: "#2C2C2C", // Deep Charcoal
-                  paper: "#3C3C3C", // Slightly Lighter Charcoal
-                },
-                text: {
-                  primary: "#F5F5F5", // Light Gray
-                },
-              }),
-        },
-      }),
-    [themeMode]
+  const [theme, setTheme] = useState(
+    localStorage.getItem('theme') || 
+    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
   );
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Toggle theme and handle manual override
-  const toggleTheme = useCallback(() => {
-    setThemeMode((prev) => {
-      const newTheme = prev === "light" ? "dark" : "light";
-      localStorage.setItem("theme", newTheme); // Save user preference
-      setIsManual(true); // User has set a manual preference
-      return newTheme;
-    });
-  }, []);
-
-  // Function to reset to system theme (optional)
-  const resetTheme = useCallback(() => {
-    localStorage.removeItem("theme"); // Remove user preference
-    setIsManual(false); // Revert to system preference
-    setThemeMode(getSystemTheme());
-  }, []);
-
-  // Apply the current theme as a class on the body element
   useEffect(() => {
-    document.body.className = themeMode;
-  }, [themeMode]);
+    // Apply theme to document element
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    
+    // Apply theme to body
+    document.body.classList.toggle('dark', theme === 'dark');
+    
+    // Save theme preference
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <div className={`
+      min-h-screen 
+      ${theme === 'dark' ? 'bg-dark-primary text-dark-primary' : 'bg-light-primary text-light-primary'}
+    `}>
       <Router>
-        <Routes>
-          <Route
-            path="/"
-            element={<Home toggleTheme={toggleTheme} themeMode={themeMode} />}
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <Dashboard toggleTheme={toggleTheme} themeMode={themeMode} />
-            }
-          />
-        </Routes>
+        <AppLayout toggleTheme={toggleTheme} theme={theme} />
       </Router>
-    </ThemeProvider>
+    </div>
+  );
+}
+
+function AppLayout({ toggleTheme, theme }) {
+  return (
+    <div className="flex">
+      {/* Sidebar */}
+      <Sidebar toggleTheme={toggleTheme} theme={theme} />
+
+      {/* Main Content Area */}
+      <main className="ml-20 w-full">
+        <AppRoutes toggleTheme={toggleTheme} theme={theme} />
+      </main>
+    </div>
+  );
+}
+
+function AppRoutes({ toggleTheme, theme }) {
+  const location = useLocation();
+
+  return (
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route 
+          path="/" 
+          element={
+            <motion.div
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Home toggleTheme={toggleTheme} themeMode={theme} />
+            </motion.div>
+          } 
+        />
+        <Route 
+          path="/dashboard" 
+          element={
+            <motion.div
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Dashboard toggleTheme={toggleTheme} themeMode={theme} />
+            </motion.div>
+          } 
+        />
+        <Route 
+          path="/dashboard/:jobId" 
+          element={
+            <motion.div
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Dashboard toggleTheme={toggleTheme} themeMode={theme} />
+            </motion.div>
+          } 
+        />
+        <Route 
+          path="/analytics" 
+          element={
+            <motion.div
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              transition={{ duration: 0.3 }}
+            >
+              <AnalyticsPage toggleTheme={toggleTheme} themeMode={theme} />
+            </motion.div>
+          } 
+        />
+      </Routes>
+    </AnimatePresence>
   );
 }
 

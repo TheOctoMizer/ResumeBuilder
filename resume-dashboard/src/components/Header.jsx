@@ -39,14 +39,6 @@ function Header({
         Job Dashboard
       </Typography>
       <Stack direction="row" spacing={2} alignItems="center">
-        {/* <TextField
-          label="Search Jobs"
-          variant="outlined"
-          size="small"
-          value={searchTerm}
-          onChange={onSearchChange}
-          sx={{ width: "300px" }}
-        /> */}
         <Tooltip title="Analytics">
           <Button
             variant="outlined"
@@ -60,11 +52,6 @@ function Header({
         <Tooltip title="Refresh">
           <IconButton aria-label="refresh" onClick={onRefresh}>
             <RefreshIcon />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Toggle Theme">
-          <IconButton aria-label="toggle theme" onClick={toggleTheme}>
-            {themeMode === "dark" ? <DarkModeIcon /> : <LightModeIcon />}
           </IconButton>
         </Tooltip>
       </Stack>
