@@ -1,79 +1,97 @@
 // background.js
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // Retrieve the stored API base URL before making any requests
-  chrome.storage.sync.get(["apiBaseUrl"], function (result) {
-    const baseUrl = result.apiBaseUrl || "http://localhost:8080";
+  // Wrap the entire logic in an async function to handle promises more cleanly
+  const handleMessage = async () => {
+    try {
+      // Use a promise-based storage retrieval
+      const result = await new Promise((resolve) =>
+        chrome.storage.sync.get(["apiBaseUrl"], resolve)
+      );
 
-    if (request.action === "sendData") {
-      const jobData = request.data;
+      const baseUrl = result.apiBaseUrl || "http://localhost:8080";
 
-      // Validate the data format with more detailed logging
-      if (!jobData) {
-        console.error("No job data received");
-        sendResponse({
-          success: false,
-          error: "No job data provided",
-        });
-        return;
-      }
+      if (request.action === "sendData") {
+        const jobData = request.data;
 
-      // Validate specific fields with more granular checks
-      const requiredFields = ["content", "url", "job_find", "job_id"];
-      const missingFields = requiredFields.filter((field) => !jobData[field]);
+        // Validate the data format
+        if (!jobData) {
+          throw new Error("No job data provided");
+        }
 
-      if (missingFields.length > 0) {
-        console.error(`Missing fields: ${missingFields.join(", ")}`);
-        sendResponse({
-          success: false,
-          error: `Missing required fields: ${missingFields.join(", ")}`,
-        });
-        return;
-      }
+        // Validate specific fields
+        const requiredFields = ["content", "url", "job_find", "job_id"];
+        const missingFields = requiredFields.filter((field) => !jobData[field]);
 
-      // Construct the data in the format expected by the backend
-      const payload = {
-        extensionId: chrome.runtime.id,
-        data: jobData,
-        timestamp: Date.now(),
-      };
+        if (missingFields.length > 0) {
+          throw new Error(
+            `Missing required fields: ${missingFields.join(", ")}`
+          );
+        }
 
-      // Add timeout and more robust error handling
-      const fetchWithTimeout = (url, options, timeout = 5000) => {
-        return Promise.race([
-          fetch(url, options),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Request timed out")), timeout)
-          ),
-        ]);
-      };
+        // Construct the payload
+        const payload = {
+          extensionId: chrome.runtime.id,
+          data: jobData,
+          timestamp: Date.now(),
+        };
 
-      fetchWithTimeout(`${baseUrl}/api/addJob`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      })
-        .then(async (response) => {
+        // Improved fetch with more robust timeout and error handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
+
+        try {
+          const response = await fetch(`${baseUrl}/api/addJob`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
           if (!response.ok) {
             throw new Error(`Server responded with ${response.status}`);
           }
-          const text = await response.text();
-          return text === "Data collected successfully"
-            ? { success: true, message: text }
-            : { success: false, message: text };
-        })
-        .then((result) => sendResponse(result))
-        .catch((error) => {
-          console.error("Error sending data:", error);
-          sendResponse({
-            success: false,
-            error: error.message || "Unknown error occurred",
-          });
-        });
 
-      return true; // Indicates we wish to send a response asynchronously
+          const text = await response.text();
+          return {
+            success: true,
+            message: text || "Data sent successfully",
+          };
+        } catch (error) {
+          clearTimeout(timeoutId);
+
+          // Differentiate between different types of errors
+          if (error.name === "AbortError") {
+            throw new Error("Request timed out");
+          }
+
+          throw error;
+        }
+      }
+
+      // If not a sendData action, throw an error
+      throw new Error("Unsupported action");
+    } catch (error) {
+      console.error("Error in message handler:", error);
+      return {
+        success: false,
+        error: error.message || "Unknown error occurred",
+      };
     }
-  });
+  };
+
+  // Call the async handler and ensure response is sent
+  handleMessage().then(sendResponse);
+
+  // Critical: Return true to indicate async response
+  return true;
+});
+
+// Optional: Add error logging for unhandled promise rejections
+self.addEventListener("unhandledrejection", (event) => {
+  console.error("Unhandled promise rejection:", event.reason);
 });
