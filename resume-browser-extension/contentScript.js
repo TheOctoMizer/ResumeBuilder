@@ -3,6 +3,27 @@
 let overlays = [];
 let selectedBlocks = [];
 let observer = null;
+let overlaysActive = false;
+let extractedData = null;
+let currentOverlay = null; // Track current overlay
+
+const PLATFORM_SELECTORS = {
+  "linkedin.com": [
+    '[class*="jobs-search__job-details"]',
+    '[class*="job-details"]',
+    '[class*="job-view-layout"]',
+  ],
+  "indeed.com": [
+    '[class*="jobsearch-ViewJob"]',
+    '[class*="viewjob"]',
+    '[class*="job-container"]',
+  ],
+  "joinhandshake.com": [
+    '[class*="job-preview"]',
+    '[class*="style__details"]',
+    '[class*="job-details"]',
+  ],
+};
 
 /**
  * Create an overlay for a given element.
@@ -12,36 +33,43 @@ function createOverlay(element) {
   const rect = element.getBoundingClientRect();
   const overlay = document.createElement("div");
   overlay.classList.add("job-overlay");
-  overlay.style.top = `${rect.top + window.scrollY}px`;
-  overlay.style.left = `${rect.left + window.scrollX}px`;
-  overlay.style.width = `${rect.width}px`;
-  overlay.style.height = `${rect.height}px`;
+
+  // Style the overlay
+  Object.assign(overlay.style, {
+    position: "absolute",
+    top: `${rect.top + window.scrollY}px`,
+    left: `${rect.left + window.scrollX}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    backgroundColor: "rgba(76, 175, 80, 0.1)",
+    border: "1px solid rgba(76, 175, 80, 0.5)",
+    zIndex: "9999",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+  });
+
   overlay.dataset.selector = getUniqueSelector(element);
 
+  // Click handler for selection
   overlay.addEventListener("click", (e) => {
     e.stopPropagation();
     e.preventDefault();
-    toggleSelection(element, overlay);
+    if (overlaysActive) {
+      toggleSelection(element, overlay);
+      extractAndDisplayContent(element);
+    }
   });
 
+  // Hover effect
   overlay.addEventListener("mouseover", () => {
-    const selector = overlay.dataset.selector;
-    const el = document.querySelector(selector);
-    if (el) {
-      // Extract data to display in tooltip
-      const title = el.querySelector(".job-title")?.innerText.trim() || "N/A";
-      const company =
-        el.querySelector(".company-name")?.innerText.trim() || "N/A";
-      const location =
-        el.querySelector(".job-location")?.innerText.trim() || "N/A";
+    overlay.style.backgroundColor = "rgba(76, 175, 80, 0.2)";
+    overlay.style.border = "2px solid rgba(76, 175, 80, 0.7)";
+  });
 
-      const content =
-        el.querySelector(".job-description")?.innerText.trim() || "N/A";
-      createTooltip(overlay, { title, company, location });
-
-      // Extract all fields into one
-      // const data = querySelectorAll(el);
-      // createTooltip(overlay, data);
+  overlay.addEventListener("mouseout", () => {
+    if (!overlay.classList.contains("selected")) {
+      overlay.style.backgroundColor = "rgba(76, 175, 80, 0.1)";
+      overlay.style.border = "1px solid rgba(76, 175, 80, 0.5)";
     }
   });
 
@@ -59,9 +87,18 @@ function toggleSelection(element, overlay) {
   if (selectedBlocks.includes(selector)) {
     selectedBlocks = selectedBlocks.filter((sel) => sel !== selector);
     overlay.classList.remove("selected");
+    overlay.style.backgroundColor = "rgba(76, 175, 80, 0.1)";
+    overlay.style.border = "1px solid rgba(76, 175, 80, 0.5)";
   } else {
-    selectedBlocks.push(selector);
+    selectedBlocks = [selector]; // Only allow one selection at a time
+    overlays.forEach((o) => {
+      o.classList.remove("selected");
+      o.style.backgroundColor = "rgba(76, 175, 80, 0.1)";
+      o.style.border = "1px solid rgba(76, 175, 80, 0.5)";
+    });
     overlay.classList.add("selected");
+    overlay.style.backgroundColor = "rgba(0, 150, 136, 0.2)";
+    overlay.style.border = "2px solid rgb(0, 150, 136)";
   }
 }
 
@@ -98,15 +135,10 @@ function getUniqueSelector(el) {
  * Identify potential job posting blocks on the page.
  */
 function identifyJobBlocks() {
-  // Customize this selector based on the target website's structure
-  const possibleBlocks = document.querySelectorAll("div, section, article");
-  possibleBlocks.forEach((block) => {
-    if (isJobPosting(block)) {
-      // Avoid creating multiple overlays for the same element
-      const selector = getUniqueSelector(block);
-      if (!overlays.some((overlay) => overlay.dataset.selector === selector)) {
-        createOverlay(block);
-      }
+  const elements = document.querySelectorAll("div, section, article, p");
+  elements.forEach((element) => {
+    if (isJobPosting(element)) {
+      createOverlay(element);
     }
   });
 }
@@ -117,9 +149,12 @@ function identifyJobBlocks() {
  * @returns {boolean} - True if it's a job posting, else false.
  */
 function isJobPosting(element) {
-  const keywords = ["job", "career", "position", "employment", "vacancy"];
   const text = element.innerText.toLowerCase();
-  return keywords.some((keyword) => text.includes(keyword));
+  const keywords = ["job", "position", "career", "role", "work"];
+  return (
+    keywords.some((keyword) => text.includes(keyword)) &&
+    element.innerText.length > 50
+  );
 }
 
 /**
@@ -129,29 +164,187 @@ function clearOverlays() {
   overlays.forEach((overlay) => overlay.remove());
   overlays = [];
   selectedBlocks = [];
+  extractedData = null;
 }
 
-/**
- * Extract structured data from selected job posting blocks as a single string.
- * @returns {Object} - An object containing the concatenated content.
- */
-function extractData() {
-  const contents = selectedBlocks
-    .map((selector) => {
-      const el = document.querySelector(selector);
-      if (el) {
-        return {
-          content: el.innerText.trim(),
-          url: window.location.href,
-          job_find: document.title,
-          job_id: `job-${Date.now()}`,
-        };
-      }
-      return null;
-    })
-    .filter((item) => item !== null);
+function getPlatformSelector() {
+  const hostname = window.location.hostname;
+  let selectors = [];
 
-  return contents.length > 0 ? contents[0] : null;
+  if (hostname.includes("linkedin")) {
+    selectors = PLATFORM_SELECTORS["linkedin.com"];
+  } else if (hostname.includes("indeed")) {
+    selectors = PLATFORM_SELECTORS["indeed.com"];
+  } else if (hostname.includes("handshake")) {
+    selectors = PLATFORM_SELECTORS["joinhandshake.com"];
+  }
+
+  // Return all selectors joined with comma for querySelector
+  return selectors.join(",");
+}
+
+function autoExtractJobContent() {
+  console.log("Attempting auto-extraction...");
+  const platformSelector = getPlatformSelector();
+
+  if (!platformSelector) {
+    console.log("No platform selector found, switching to manual mode");
+    return false;
+  }
+
+  // Try to find the job container
+  const jobContainer = document.querySelector(platformSelector);
+  if (!jobContainer) {
+    console.log("No job container found with selector:", platformSelector);
+    return false;
+  }
+
+  console.log("Job container found, extracting content...");
+
+  // Extract content and send message to popup
+  const content = jobContainer.innerText.trim();
+  const url = window.location.href;
+  const platform = getPlatform();
+  const jobId = `${platform}-${Date.now()}`;
+
+  extractedData = {
+    content,
+    url,
+    job_find: platform,
+    job_id: jobId,
+  };
+
+  // Send message to popup with extracted content
+  chrome.runtime.sendMessage(
+    {
+      action: "contentExtracted",
+      data: extractedData,
+    },
+    (response) => {
+      console.log("Content extraction message sent:", response);
+    }
+  );
+
+  createSelectedOverlay(jobContainer);
+  return true;
+}
+
+function createSelectedOverlay(element) {
+  removeAllOverlays();
+
+  const selectedOverlay = document.createElement("div");
+  selectedOverlay.classList.add("selected-overlay");
+
+  Object.assign(selectedOverlay.style, {
+    position: "absolute",
+    backgroundColor: "rgba(0, 150, 136, 0.2)",
+    border: "2px solid rgb(0, 150, 136)",
+    pointerEvents: "none",
+    zIndex: "9999",
+  });
+
+  positionOverlay(element, selectedOverlay);
+  document.body.appendChild(selectedOverlay);
+  currentOverlay = selectedOverlay;
+}
+
+// Manual selection mode functions
+function handleMouseOver(event) {
+  if (!overlaysActive) return;
+
+  const element = event.target;
+  if (
+    element.tagName.toLowerCase() === "body" ||
+    element.tagName.toLowerCase() === "html"
+  )
+    return;
+
+  removeTemporaryOverlay();
+
+  const overlay = document.createElement("div");
+  overlay.classList.add("temp-overlay");
+
+  Object.assign(overlay.style, {
+    position: "absolute",
+    backgroundColor: "rgba(76, 175, 80, 0.1)",
+    border: "1px solid rgba(76, 175, 80, 0.5)",
+    pointerEvents: "none",
+    zIndex: "9999",
+    transition: "all 0.2s ease",
+  });
+
+  positionOverlay(element, overlay);
+  document.body.appendChild(overlay);
+
+  element.addEventListener("click", handleElementClick);
+}
+
+function handleElementClick(event) {
+  if (!overlaysActive) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const element = event.target;
+  extractAndDisplayContent(element);
+  createSelectedOverlay(element);
+}
+
+// Utility functions
+function positionOverlay(element, overlay) {
+  const rect = element.getBoundingClientRect();
+  Object.assign(overlay.style, {
+    top: `${rect.top + window.scrollY}px`,
+    left: `${rect.left + window.scrollX}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+  });
+}
+
+function removeTemporaryOverlay() {
+  const tempOverlay = document.querySelector(".temp-overlay");
+  if (tempOverlay) tempOverlay.remove();
+}
+
+function removeAllOverlays() {
+  removeTemporaryOverlay();
+  if (currentOverlay) {
+    currentOverlay.remove();
+    currentOverlay = null;
+  }
+}
+
+function extractAndDisplayContent(element) {
+  const content = element.innerText.trim();
+  const url = window.location.href;
+  const platform = getPlatform();
+  const jobId = `${platform}-${Date.now()}`;
+
+  extractedData = {
+    content,
+    url,
+    job_find: platform,
+    job_id: jobId,
+  };
+
+  // Send message to popup with extracted content
+  chrome.runtime.sendMessage(
+    {
+      action: "contentExtracted",
+      data: extractedData,
+    },
+    (response) => {
+      console.log("Content extraction message sent:", response);
+    }
+  );
+}
+
+function getPlatform() {
+  const hostname = window.location.hostname;
+  if (hostname.includes("linkedin")) return "linkedin";
+  if (hostname.includes("indeed")) return "indeed";
+  if (hostname.includes("handshake")) return "handshake";
+  return "unknown";
 }
 
 /**
@@ -183,27 +376,148 @@ function createTooltip(overlay, jobData) {
   );
 }
 
-// Listen for messages from the popup or background script
+// Message Listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log("Received message in content script:", request);
-  if (request.action === "activate") {
-    identifyJobBlocks();
-    // Start observing DOM changes
-    if (!observer) {
-      observer = new MutationObserver(() => identifyJobBlocks());
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
-    sendResponse({ success: true });
-  } else if (request.action === "deactivate") {
-    clearOverlays();
-    if (observer) observer.disconnect();
-    observer = null;
-    sendResponse({ success: true });
-  } else if (request.action === "extract") {
-    const data = extractData();
-    sendResponse({ success: !!data, data });
+  console.log("Content script received:", request.action);
+
+  switch (request.action) {
+    case "activate":
+      overlaysActive = true;
+      // Try automatic extraction first
+      const extracted = autoExtractJobContent();
+      if (!extracted) {
+        // Fall back to manual selection mode
+        document.addEventListener("mouseover", handleMouseOver);
+        sendResponse({
+          success: true,
+          message: "Switched to manual selection mode",
+        });
+      } else {
+        sendResponse({
+          success: true,
+          message: "Auto-extracted job content",
+        });
+      }
+      break;
+
+    case "deactivate":
+      overlaysActive = false;
+      document.removeEventListener("mouseover", handleMouseOver);
+      removeAllOverlays();
+      extractedData = null;
+      sendResponse({ success: true });
+      break;
+
+    case "sendData":
+      if (extractedData) {
+        sendResponse({ success: true, data: extractedData });
+      } else {
+        sendResponse({ success: false, error: "No data extracted" });
+      }
+      break;
   }
+
   return true;
 });
 
 console.log("Content script loaded");
+
+function createPanel() {
+  const panel = document.createElement("div");
+  panel.className = "job-extractor-panel";
+  panel.innerHTML = `
+    <div class="job-extractor-header">
+      <h3 class="job-extractor-title">Job Extractor</h3>
+      <button class="job-extractor-minimize" title="Minimize">−</button>
+    </div>
+    <div class="job-extractor-content">
+      <div class="job-extractor-output">
+        Click 'Activate' to start extracting job content
+      </div>
+      <div class="job-extractor-buttons">
+        <button class="job-extractor-button activate">
+          ▶ Activate
+        </button>
+        <button class="job-extractor-button send" disabled>
+          ↗ Send
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Add event listeners
+  const minimizeBtn = panel.querySelector(".job-extractor-minimize");
+  const activateBtn = panel.querySelector(".job-extractor-button.activate");
+  const sendBtn = panel.querySelector(".job-extractor-button.send");
+  const output = panel.querySelector(".job-extractor-output");
+
+  minimizeBtn.addEventListener("click", () => toggleMinimize(panel));
+  activateBtn.addEventListener("click", () =>
+    handleActivate(activateBtn, sendBtn, output)
+  );
+  sendBtn.addEventListener("click", () =>
+    handleSend(activateBtn, sendBtn, output)
+  );
+
+  document.body.appendChild(panel);
+  return panel;
+}
+
+function toggleMinimize(panel) {
+  if (panel.classList.contains("job-extractor-minimized")) {
+    panel.classList.remove("job-extractor-minimized");
+    panel.innerHTML = `
+      <div class="job-extractor-header">
+        <h3 class="job-extractor-title">Job Extractor</h3>
+        <button class="job-extractor-minimize" title="Minimize">−</button>
+      </div>
+      <div class="job-extractor-content">
+        <div class="job-extractor-output">
+          Click 'Activate' to start extracting job content
+        </div>
+        <div class="job-extractor-buttons">
+          <button class="job-extractor-button activate">
+            ▶ Activate
+          </button>
+          <button class="job-extractor-button send" disabled>
+            ↗ Send
+          </button>
+        </div>
+      </div>
+    `;
+  } else {
+    panel.classList.add("job-extractor-minimized");
+    panel.innerHTML = "⊕";
+  }
+
+  // Reattach event listeners after changing innerHTML
+  attachPanelListeners(panel);
+}
+
+function attachPanelListeners(panel) {
+  const minimizeBtn = panel.querySelector(".job-extractor-minimize");
+  const activateBtn = panel.querySelector(".job-extractor-button.activate");
+  const sendBtn = panel.querySelector(".job-extractor-button.send");
+  const output = panel.querySelector(".job-extractor-output");
+
+  if (minimizeBtn) {
+    minimizeBtn.addEventListener("click", () => toggleMinimize(panel));
+  }
+  if (activateBtn) {
+    activateBtn.addEventListener("click", () =>
+      handleActivate(activateBtn, sendBtn, output)
+    );
+  }
+  if (sendBtn) {
+    sendBtn.addEventListener("click", () =>
+      handleSend(activateBtn, sendBtn, output)
+    );
+  }
+}
+
+// Initialize the panel when the content script loads
+document.addEventListener("DOMContentLoaded", () => {
+  createPanel();
+});
+
+// Update manifest.json to include the new files
